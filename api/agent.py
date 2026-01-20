@@ -44,14 +44,14 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 # we use the article object for parsing serpapi results later
-class Article(BaseModel):
+class SearchResult(BaseModel):
     title: str
     source: str
     link: str
     snippet: str
 
     @classmethod
-    def from_serpapi_result(cls, result: dict) -> "Article":
+    def from_serpapi_result(cls, result: dict) -> "SearchResult":
         return cls(
             title=result["title"],
             source=result["source"],
@@ -83,7 +83,7 @@ async def subtract(x: float, y: float) -> float:
     return x - y
 
 @tool
-async def serpapi(query: str) -> list[Article]:
+async def serpapi(query: str) -> list[SearchResult]:
     """Use this tool to search the web."""
     params = {
         "api_key": SERPAPI_API_KEY.get_secret_value(),
@@ -96,7 +96,7 @@ async def serpapi(query: str) -> list[Article]:
             params=params
         ) as response:
             results = await response.json()
-    return [Article.from_serpapi_result(result) for result in results["organic_results"]]
+    return [SearchResult.from_serpapi_result(result) for result in results["organic_results"]]
 
 @tool
 async def final_answer(answer: str, tools_used: list[str]) -> dict[str, str | list[str]]:
