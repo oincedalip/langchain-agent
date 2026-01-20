@@ -80,7 +80,7 @@ async def exponentiate(x: float, y: float) -> float:
 @tool
 async def subtract(x: float, y: float) -> float:
     """Subtract 'x' from 'y'."""
-    return y - x
+    return x - y
 
 @tool
 async def serpapi(query: str) -> list[Article]:
@@ -126,7 +126,7 @@ class QueueCallbackHandler(AsyncCallbackHandler):
     
     async def on_llm_new_token(self, *args, **kwargs) -> None:
         chunk = kwargs.get("chunk")
-        if chunk and (chunk.message.tool_calls or chunk.message.tool_call_chunks):
+        if chunk and chunk.message.tool_calls:
             if chunk.message.tool_calls:
                 if chunk.message.tool_calls[0]["name"] == "final_answer":
                     self.final_answer_seen = True
@@ -159,7 +159,7 @@ class CustomAgentExecutor:
                 "agent_scratchpad": lambda x: x.get("agent_scratchpad", [])
             }
             | prompt
-            | llm.bind_tools(tools, tool_choice="required")
+            | llm.bind_tools(tools, tool_choice="any")
         )
 
     async def invoke(self, input: str, streamer: QueueCallbackHandler, verbose: bool = False) -> dict:
