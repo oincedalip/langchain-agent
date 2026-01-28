@@ -8,7 +8,10 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import ConfigurableField
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
+from langchain_chroma import Chroma
+from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel, SecretStr
+
 
 
 # Constants and Configuration
@@ -29,14 +32,26 @@ llm = ChatOpenAI(
     )
 )
 
+vectorstore = Chroma(
+    persist_directory="../data/company_docs/chroma_db",
+    embedding_function=OpenAIEmbeddings()
+)
+
+retriever = vectorstore.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 4}
+)
+
+
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "You're a helpful assistant. You MUST call exactly one tool in every response."
-        "If external information or computation is required, call the appropriate tool."
-        "Otherwise, call the final_answer tool. "
-        " Do NOT respond with plain text.Use tools to answer the "
-        "user's CURRENT question, not previous questions."
+        "You're a helpful assistant. You MUST call exactly one tool in every response.\n"
+        "Use company_docs_search for questions about internal company information, "
+        "policies, products, architecture, or documentation.\n"
+        "Use serpapi for general web knowledge.\n"
+        "If no external info is required, call final_answer.\n"
+        "Do NOT respond with plain text."
     )),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
@@ -99,11 +114,27 @@ async def serpapi(query: str) -> list[SearchResult]:
     return [SearchResult.from_serpapi_result(result) for result in results["organic_results"]]
 
 @tool
-async def final_answer(answer: str, tools_used: list[str]) -> dict[str, str | list[str]]:
-    """Use this tool to provide a final answer to the user."""
-    return {"answer": answer, "tools_used": tools_used}
+async def company_docs_search(query: str) -> str:
+    """
+    Search internal company documents.
+    Use this tool when the question is about company policies,
+    internal processes, products, or documentation.
+    """
+    docs = retriever.invoke(query)
 
-tools = [add, subtract, multiply, exponentiate, final_answer, serpapi]
+    formatted = "\n\n".join(
+        f"Source: {d.metadata.get('source', 'internal')}\n{d.page_content}"
+        for d in docs
+    )
+
+    return formatted
+
+@tool
+async def final_answer(answer: str, tools_used: list[str], sources: list[str] | None = None) -> dict[str, str | list[str]]:
+    """Use this tool to provide a final answer to the user."""
+    return {"answer": answer, "tools_used": tools_used, "sources": sources or []}
+
+tools = [add, subtract, multiply, exponentiate, final_answer, serpapi, company_docs_search]
 # note when we have sync tools we use tool.func, when async we use tool.coroutine
 name2tool = {tool.name: tool.coroutine for tool in tools}
 
